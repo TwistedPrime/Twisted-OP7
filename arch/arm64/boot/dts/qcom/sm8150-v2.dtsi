@@ -1335,7 +1335,7 @@
 			qcom,silver-khz = <1708800>;
 			qcom,gold-khz = <2323200>;
 			qcom,prime-khz = <2534400>;
-			qcom,trip-deg = <53000>;
+			qcom,trip-deg = <52000>;
 		};
 
 		zone@2 {
@@ -1343,7 +1343,7 @@
 			qcom,silver-khz = <1708800>;
 			qcom,gold-khz = <2016000>;
 			qcom,prime-khz = <2534400>;
-			qcom,trip-deg = <57000>;
+			qcom,trip-deg = <54000>;
 		};
 
 		zone@3 {
@@ -1351,7 +1351,7 @@
       			qcom,silver-khz = <1708800>;
       			qcom,gold-khz = <2016000>;
       			qcom,prime-khz = <2323200>;
-			qcom,trip-deg = <60000>;
+			qcom,trip-deg = <56000>;
 		};
 
 		zone@4 {
@@ -1359,7 +1359,7 @@
       			qcom,silver-khz = <1708800>;
       			qcom,gold-khz = <2016000>;
 			qcom,prime-khz = <2016000>;
-			qcom,trip-deg = <62000>;
+			qcom,trip-deg = <60000>;
 		};
 
 		zone@5 {
@@ -1367,7 +1367,7 @@
 			qcom,silver-khz = <1708800>;
 			qcom,gold-khz = <1920000>;
 			qcom,prime-khz = <2016000>;
-			qcom,trip-deg = <64000>;
+			qcom,trip-deg = <61000>;
 		};
 
 		zone@6 {
@@ -1375,7 +1375,7 @@
 			qcom,silver-khz = <1708800>;
 			qcom,gold-khz = <1804800>;
 			qcom,prime-khz = <2016000>;
-			qcom,trip-deg = <65000>;
+			qcom,trip-deg = <62000>;
 		};
 
 		zone@7 {
@@ -1383,7 +1383,7 @@
 			qcom,silver-khz = <1708800>;
 			qcom,gold-khz = <1804800>;
 			qcom,prime-khz = <1804800>;
-			qcom,trip-deg = <70000>;
+			qcom,trip-deg = <64000>;
 		};
 
 		zone@8 {
@@ -1391,7 +1391,7 @@
 			qcom,silver-khz = <1708800>;
 			qcom,gold-khz = <1401600>;
 			qcom,prime-khz = <1804800>;
-			qcom,trip-deg = <72000>;
+			qcom,trip-deg = <70000>;
 		};
 
 		zone@9 {
@@ -1399,30 +1399,30 @@
 			qcom,silver-khz = <1708800>;
 			qcom,gold-khz = <1401600>;
 			qcom,prime-khz = <1804800>;
-			qcom,trip-deg = <74000>;
+			qcom,trip-deg = <72000>;
 		};
 
 		zone@10 {
 			reg = <10>;
 			qcom,silver-khz = <1708800>;
-			qcom,gold-khz = <825600>;
+			qcom,gold-khz = <1056000>;
 			qcom,prime-khz = <1804800>;
-			qcom,trip-deg = <80000>;
+			qcom,trip-deg = <74000>;
 		};
 
 		zone@11 {
 			reg = <11>;
 			qcom,silver-khz = <1708800>;
-			qcom,gold-khz = <825600>;
-			qcom,prime-khz = <940800>;
-			qcom,trip-deg = <85000>;
+			qcom,gold-khz = <1056000>;
+			qcom,prime-khz = <1171200>;
+			qcom,trip-deg = <80000>;
 		};
 
 		zone@12 {
 			reg = <12>;
 			qcom,silver-khz = <1708800>;
-			qcom,gold-khz = <825600>;
-			qcom,prime-khz = <940800>;
+			qcom,gold-khz = <1056000>;
+			qcom,prime-khz = <1171200>;
 			qcom,trip-deg = <90000>;
 		};
 	};
