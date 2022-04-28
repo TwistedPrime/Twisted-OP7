@@ -2081,7 +2081,7 @@ static void uclamp_set(struct kernfs_open_file *of,
 
 	static struct ucl_param tgts[] = {
 		{"top-app",    	     	"10", "100", 1, 1},
-		{"foreground", 	     	"0",  "50",  0, 0},
+		{"foreground", 	     	"10", "80",  1, 0},
 		{"background", 	     	"20", "100", 0, 0},
 		{"system-background", 	"0",  "40",  0, 0},
 		{"camera-daemon",	"10", "100", 1, 1},
@@ -2274,7 +2274,7 @@ static void cpuset_fork(struct task_struct *task)
 	if (task_css_is_root(task, cpuset_cgrp_id))
 		return;
 
-	set_cpus_allowed_ptr(task, &current->cpus_allowed);
+	set_cpus_allowed_ptr(task, current->cpus_ptr);
 	task->mems_allowed = current->mems_allowed;
 }
 
