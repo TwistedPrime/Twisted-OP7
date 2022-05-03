@@ -172,12 +172,6 @@ int vm_swappiness = 20;
  */
 unsigned long vm_total_pages;
 
-#ifdef CONFIG_KSWAPD_CPU_AFFINITY_MASK
-char *kswapd_cpu_mask = CONFIG_KSWAPD_CPU_AFFINITY_MASK_VALUE;
-#else
-char *kswapd_cpu_mask = NULL;
-#endif
-
 static LIST_HEAD(shrinker_list);
 static DEFINE_SPINLOCK(shrinker_lock);
 static DEFINE_RWLOCK(shrinker_rwlock);
@@ -4463,6 +4457,7 @@ void lru_gen_set_state(bool enable, bool main, bool swap)
 
 	mem_hotplug_begin();
 	mutex_lock(&lru_gen_state_mutex);
+	cgroup_lock();
 
 	main = main && enable != lru_gen_enabled();
 	swap = swap && !(enable ? lru_gen_nr_swapfiles++ : --lru_gen_nr_swapfiles);
@@ -4507,6 +4502,7 @@ void lru_gen_set_state(bool enable, bool main, bool swap)
 		cond_resched();
 	} while ((memcg = mem_cgroup_iter(NULL, memcg, NULL)));
 unlock:
+	cgroup_unlock();
 	mutex_unlock(&lru_gen_state_mutex);
 	mem_hotplug_done();
 }
@@ -4522,6 +4518,7 @@ static int __meminit __maybe_unused lru_gen_online_mem(struct notifier_block *se
 		return NOTIFY_DONE;
 
 	mutex_lock(&lru_gen_state_mutex);
+	cgroup_lock();
 
 	memcg = mem_cgroup_iter(NULL, NULL, NULL);
 	do {
@@ -4535,6 +4532,7 @@ static int __meminit __maybe_unused lru_gen_online_mem(struct notifier_block *se
 		WRITE_ONCE(lrugen->enabled[1], lru_gen_enabled());
 	} while ((memcg = mem_cgroup_iter(NULL, memcg, NULL)));
 
+	cgroup_unlock();
 	mutex_unlock(&lru_gen_state_mutex);
 
 	return NOTIFY_DONE;
@@ -4722,7 +4720,12 @@ static void lru_gen_seq_show_full(struct seq_file *m, struct lruvec *lruvec,
 static int lru_gen_seq_show(struct seq_file *m, void *v)
 {
 	unsigned long seq;
-	bool full = false;
+	bool full =
+	#ifdef CONFIG_DEBUG_FS
+		!debugfs_real_fops(m->file)->write;
+	#else
+		false;
+	#endif
 	struct lruvec *lruvec = v;
 	struct lrugen *lrugen = &lruvec->evictable;
 	int nid = lruvec_pgdat(lruvec)->node_id;
@@ -6226,7 +6229,7 @@ static int kswapd(void *p)
 	};
 	const struct cpumask *cpumask = cpumask_of_node(pgdat->node_id);
 
-	if (kswapd_cpu_mask == NULL && !cpumask_empty(cpumask))
+	if (!cpumask_empty(cpumask))
 		set_cpus_allowed_ptr(tsk, cpumask);
 	current->reclaim_state = &reclaim_state;
 
@@ -6436,22 +6439,6 @@ static int kswapd_cpu_online(unsigned int cpu)
 	return 0;
 }
 
-static int set_kswapd_cpu_mask(pg_data_t *pgdat)
-{
-	int ret = 0;
-	cpumask_t tmask;
-
-	if (!kswapd_cpu_mask)
-		return 0;
-
-	cpumask_clear(&tmask);
-	ret = cpumask_parse(kswapd_cpu_mask, &tmask);
-	if (ret)
-		return ret;
-
-	return set_cpus_allowed_ptr(pgdat->kswapd, &tmask);
-}
-
 /*
  * This kswapd start function will be called by init and node-hot-add.
  * On node-hot-add, kswapd will moved to proper cpus if cpus are hot-added.
@@ -6486,9 +6473,6 @@ int kswapd_run(int nid)
 		pgdat->kswapd = NULL;
 		kthread_stop(pgdat->kshrinkd);
 		pgdat->kshrinkd = NULL;
-	} else if (kswapd_cpu_mask) {
-		if (set_kswapd_cpu_mask(pgdat))
-			pr_warn("error setting kswapd cpu affinity mask\n");
 	}
 	return ret;
 }
