@@ -23,8 +23,6 @@
 #include <linux/freezer.h>
 #include <linux/page_owner.h>
 #include <linux/psi.h>
-#include <linux/cpu_input_boost.h>
-#include <linux/devfreq_boost.h>
 #include <linux/msm_drm_notify.h>
 #include <linux/moduleparam.h>
 #include <linux/time.h>
@@ -2584,10 +2582,6 @@ static void kcompactd_do_work(pg_data_t *pgdat)
 							cc.classzone_idx);
 	count_compact_event(KCOMPACTD_WAKE);
 
-	devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 100);
-	devfreq_boost_kick_max(DEVFREQ_MSM_LLCCBW, 100);
-	cpu_input_boost_kick_max(100);
-
 	for (zoneid = 0; zoneid <= cc.classzone_idx; zoneid++) {
 		int status;
 
@@ -2718,8 +2712,7 @@ int kcompactd_run(int nid)
 	if (pgdat->kcompactd)
 		return 0;
 
-	pgdat->kcompactd = kthread_run_perf_critical(cpu_hp_mask, kcompactd,
-					pgdat, "kcompactd%d", nid);
+	pgdat->kcompactd = kthread_run(kcompactd, pgdat, "kcompactd%d", nid);
 	if (IS_ERR(pgdat->kcompactd)) {
 		pr_err("Failed to start kcompactd on node %d\n", nid);
 		ret = PTR_ERR(pgdat->kcompactd);
