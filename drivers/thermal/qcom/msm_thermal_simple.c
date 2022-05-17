@@ -12,6 +12,10 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/thermal.h>
+#include <linux/moduleparam.h>
+
+bool super_cool = true;
+module_param(super_cool, bool, 0644);
 
 #define OF_READ_U32(node, prop, dst)						\
 ({										\
@@ -92,7 +96,12 @@ static void thermal_throttle_worker(struct work_struct *work)
 	/* Emergency case */
 	if (temp_cpus_avg > 90000)
 		temp_avg = (temp_cpus_avg * 6 + temp_batt) / 7;
-
+		
+	if (super_cool) {
+	if (temp_avg < 60000)	
+		temp_avg = temp_avg + 5000;
+	}		
+		
 	old_zone = t->curr_zone;
 	new_zone = NULL;
 
