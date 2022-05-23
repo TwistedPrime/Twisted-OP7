@@ -12,6 +12,13 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/thermal.h>
+#include <linux/moduleparam.h>
+
+bool positive = true;
+unsigned short offset = 0;
+module_param(positive, bool, 0644);
+module_param(offset, short, 0644);
+
 
 #define OF_READ_U32(node, prop, dst)						\
 ({										\
@@ -92,6 +99,21 @@ static void thermal_throttle_worker(struct work_struct *work)
 	/* Emergency case */
 	if (temp_cpus_avg > 90000)
 		temp_avg = (temp_cpus_avg * 6 + temp_batt) / 7;
+
+	/* Reset offset if invalid */		
+
+	if (offset > 10)
+		offset = 0;
+		
+	/* Apply offset */		
+	if (temp_avg < 60000) {			
+	if (positive) {
+		    temp_avg = temp_avg - (offset * 1000);
+		}
+		else {
+		    temp_avg = temp_avg + (offset * 1000);
+		}
+	}		
 
 	old_zone = t->curr_zone;
 	new_zone = NULL;
