@@ -14,7 +14,7 @@
 #include <linux/thermal.h>
 #include <linux/moduleparam.h>
 
-bool super_cool = false;
+bool super_cool = true;
 module_param(super_cool, bool, 0644);
 
 #define OF_READ_U32(node, prop, dst)						\
