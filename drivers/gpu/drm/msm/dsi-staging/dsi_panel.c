@@ -35,6 +35,7 @@
 #include "dsi_drm.h"
 #include "dsi_display.h"
 #include "sde_crtc.h"
+#include "sde_hw_mdss.h"
 #include "sde_rm.h"
 /**
  * topology is currently defined by a set of following 3 values:
@@ -736,10 +737,11 @@ static int dsi_panel_power_off(struct dsi_panel *panel)
 	return rc;
 }
 
-int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
-				enum dsi_cmd_set_type type)
+int __dsi_panel_tx_cmd_set(struct dsi_panel *panel,
+				enum dsi_cmd_set_type type,
+				bool fod_usage)
 {
-	int rc = 0, i = 0;
+	int rc = 0, i = 0, wait_multi = 1000;
 	ssize_t len;
 	struct dsi_cmd_desc *cmds;
 	u32 count;
@@ -775,14 +777,29 @@ int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
 			pr_debug("failed to set cmds(%d), rc=%d\n", type, rc);
 			goto error;
 		}
+
+		if (fod_usage) {
+			if (panel->hw_type == DSI_PANEL_SAMSUNG_SOFEF03F_M)
+				wait_multi = 700;
+			else if (panel->hw_type == DSI_PANEL_SAMSUNG_S6E3FC2X01)
+				wait_multi = 500;
+		}
+
 		if (cmds->post_wait_ms)
-			usleep_range(cmds->post_wait_ms*1000,
-					((cmds->post_wait_ms*1000)+10));
+			usleep_range(cmds->post_wait_ms*wait_multi,
+					((cmds->post_wait_ms*wait_multi)+10));
 		cmds++;
 	}
 error:
 	return rc;
 }
+
+int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
+				enum dsi_cmd_set_type type)
+{
+	return __dsi_panel_tx_cmd_set(panel, type, false);
+}
+
 
 static int dsi_panel_pinctrl_deinit(struct dsi_panel *panel)
 {
@@ -952,61 +969,47 @@ error:
 	return rc;
 }
 
-int dsi_panel_op_set_hbm_mode(struct dsi_panel *panel, int level)
+bool hbm_active;
+int hbm_level;
+static void set_hbm_mode(struct work_struct *work)
 {
-	int rc = 0;
-	u32 count;
-	struct dsi_display_mode *mode;
-
-	if (!panel || !panel->cur_mode) {
-		pr_debug("Invalid params\n");
-		return -EINVAL;
-	}
+	struct dsi_panel *panel = get_main_display()->panel;
+	int level = hbm_level;
 
 	mutex_lock(&panel->panel_lock);
-
-	mode = panel->cur_mode;
-	if (panel->hbm_mode == 5) {
-        level = 1;
-    }
 	switch (level) {
 	case 0:
-		count = mode->priv_info->cmd_sets[DSI_CMD_SET_HBM_OFF].count;
-		if (!count) {
-			pr_debug("This panel does not support HBM mode off.\n");
-			goto error;
-		} else {
-			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_HBM_OFF);
-			printk(KERN_DEBUG
-			       "When HBM OFF -->hbm_backight = %d panel->bl_config.bl_level =%d\n",
-			       panel->hbm_backlight, panel->bl_config.bl_level);
-			rc = dsi_panel_update_backlight(panel,
-							panel->hbm_backlight);
+		if (!HBM_flag) {
+			dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_HBM_OFF);
+			pr_debug(
+				"When HBM OFF -->hbm_backight = %d panel->bl_config.bl_level =%d\n",
+				panel->hbm_backlight, panel->bl_config.bl_level);
+			dsi_panel_update_backlight(panel, panel->hbm_backlight);
 		}
 		break;
-
 	case 1:
-		count = mode->priv_info->cmd_sets[DSI_CMD_SET_HBM_ON_5].count;
-		if (!count) {
-			pr_debug("This panel does not support HBM mode.\n");
-			goto error;
-		} else {
-			rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_HBM_ON_5);
-		}
+		__dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_HBM_ON_5, true);
 		break;
-	default:
-		break;
-
 	}
-	pr_debug("Set HBM Mode = %d\n", level);
-	if (level == 5) {
-		pr_debug("HBM == 5 for fingerprint\n");
-	}
-
-error:
 	mutex_unlock(&panel->panel_lock);
 
-	return rc;
+	pr_debug("Set HBM Mode = %d\n", level);
+}
+
+DECLARE_WORK(hbm_work, set_hbm_mode);
+/*
+ * This function is used only for "op_friginer_print_hbm".
+ *
+ * As we are triggering hbm_work after dim layer is committed,
+ * remove the call here.
+ */
+int dsi_panel_op_set_hbm_mode(struct dsi_panel *panel, int level)
+{
+	hbm_active = !!level;
+
+	// queue_work(system_highpri_wq, &hbm_work);
+
+	return 0;
 }
 
 static int dsi_panel_update_pwm_backlight(struct dsi_panel *panel,
@@ -1709,8 +1712,14 @@ static int dsi_panel_parse_qsync_caps(struct dsi_panel *panel,
 				     struct device_node *of_node)
 {
 	int rc = 0;
-	u32 val = 0;
+	u32 val = 0, i;
+	struct dsi_qsync_capabilities *qsync_caps = &panel->qsync_caps;
+	struct dsi_parser_utils *utils = &panel->utils;
 
+	/**
+	 * "mdss-dsi-qsync-min-refresh-rate" is defined in cmd mode and
+	 *  video mode when there is only one qsync min fps present.
+	 */
 	rc = of_property_read_u32(of_node,
 				  "qcom,mdss-dsi-qsync-min-refresh-rate",
 				  &val);
@@ -1718,7 +1727,71 @@ static int dsi_panel_parse_qsync_caps(struct dsi_panel *panel,
 		pr_debug("[%s] qsync min fps not defined rc:%d\n",
 			panel->name, rc);
 
-	panel->qsync_min_fps = val;
+	qsync_caps->qsync_min_fps = val;
+
+	/**
+	 * "dsi-supported-qsync-min-fps-list" may be defined in video
+	 *  mode, only in dfps case when "qcom,dsi-supported-dfps-list"
+	 *  is defined.
+	 */
+	qsync_caps->qsync_min_fps_list_len = utils->count_u32_elems(utils->data,
+				  "qcom,dsi-supported-qsync-min-fps-list");
+	if (qsync_caps->qsync_min_fps_list_len < 1)
+		goto qsync_support;
+
+	/**
+	 * qcom,dsi-supported-qsync-min-fps-list cannot be defined
+	 *  along with qcom,mdss-dsi-qsync-min-refresh-rate.
+	 */
+	if (qsync_caps->qsync_min_fps_list_len >= 1 &&
+		qsync_caps->qsync_min_fps) {
+		rc = -EINVAL;
+		goto error;
+	}
+
+	if (panel->dfps_caps.dfps_list_len !=
+			qsync_caps->qsync_min_fps_list_len) {
+		rc = -EINVAL;
+		goto error;
+	}
+
+	qsync_caps->qsync_min_fps_list =
+		kcalloc(qsync_caps->qsync_min_fps_list_len, sizeof(u32),
+			GFP_KERNEL);
+	if (!qsync_caps->qsync_min_fps_list) {
+		rc = -ENOMEM;
+		goto error;
+	}
+
+	rc = utils->read_u32_array(utils->data,
+			"qcom,dsi-supported-qsync-min-fps-list",
+			qsync_caps->qsync_min_fps_list,
+			qsync_caps->qsync_min_fps_list_len);
+	if (rc) {
+		rc = -EINVAL;
+		goto error;
+	}
+
+	qsync_caps->qsync_min_fps = qsync_caps->qsync_min_fps_list[0];
+
+	for (i = 1; i < qsync_caps->qsync_min_fps_list_len; i++) {
+		if (qsync_caps->qsync_min_fps_list[i] <
+				qsync_caps->qsync_min_fps)
+			qsync_caps->qsync_min_fps =
+				qsync_caps->qsync_min_fps_list[i];
+	}
+
+qsync_support:
+	/* allow qsync support only if DFPS is with VFP approach */
+	if ((panel->dfps_caps.dfps_support) &&
+	    !(panel->dfps_caps.type == DSI_DFPS_IMMEDIATE_VFP))
+		panel->qsync_caps.qsync_min_fps = 0;
+
+error:
+	if (rc < 0) {
+		qsync_caps->qsync_min_fps = 0;
+		qsync_caps->qsync_min_fps_list_len = 0;
+	}
 
 	return rc;
 }
@@ -2030,8 +2103,9 @@ static int dsi_panel_parse_panel_mode(struct dsi_panel *panel)
 		goto error;
 	}
 
-	panel_mode_switch_enabled = true;
-	pr_debug("%s: panel operating mode switch feature %s\n", __func__,
+	panel_mode_switch_enabled = utils->read_bool(utils->data,
+			"qcom,mdss-dsi-panel-mode-switch");
+	pr_info("%s: panel operating mode switch feature %s\n", __func__,
 		(panel_mode_switch_enabled ? "enabled" : "disabled"));
 
 	if (panel_mode == DSI_OP_VIDEO_MODE || panel_mode_switch_enabled) {
@@ -2589,7 +2663,8 @@ static int dsi_panel_parse_misc_features(struct dsi_panel *panel)
 	panel->sync_broadcast_en = utils->read_bool(utils->data,
 			"qcom,cmd-sync-wait-broadcast");
 
-	panel->lp11_init = true;
+	panel->lp11_init = utils->read_bool(utils->data,
+			"qcom,mdss-dsi-lp11-init");
 	return 0;
 }
 
@@ -3481,8 +3556,8 @@ static int dsi_panel_parse_partial_update_caps(struct dsi_display_mode *mode,
 
 	memset(roi_caps, 0, sizeof(*roi_caps));
 
-	//on qhd dual_roi causes severe visual glitches.
-	data = "single_roi";
+	data = utils->get_property(utils->data,
+		"qcom,partial-update-enabled", NULL);
 	if (data) {
 		if (!strcmp(data, "dual_roi"))
 			roi_caps->num_roi = 2;
@@ -3991,11 +4066,6 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	rc = dsi_panel_parse_qsync_caps(panel, of_node);
 	if (rc)
 		pr_debug("failed to parse qsync features, rc=%d\n", rc);
-
-	/* allow qsync support only if DFPS is with VFP approach */
-	if ((panel->dfps_caps.dfps_support) &&
-	    !(panel->dfps_caps.type == DSI_DFPS_IMMEDIATE_VFP))
-		panel->qsync_min_fps = 0;
 
 	rc = dsi_panel_parse_dyn_clk_caps(panel);
 	if (rc)
@@ -5393,7 +5463,7 @@ int dsi_panel_set_hbm_mode(struct dsi_panel *panel, int level)
 			}
 			else {
 				HBM_flag = true;
-				rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_HBM_ON_5);
+				__dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_HBM_ON_5, true);
 				pr_debug("Send DSI_CMD_SET_HBM_ON_5 cmds.\n");
 			}
 			break;
@@ -5994,6 +6064,7 @@ int dsi_panel_tx_gamma_cmd_set(struct dsi_panel *panel,
 			pr_debug("failed to set cmds(%d), rc=%d\n", type, rc);
 			goto error;
 		}
+
 		if (cmds->post_wait_ms)
 			usleep_range(cmds->post_wait_ms*1000,
 					((cmds->post_wait_ms*1000)+10));

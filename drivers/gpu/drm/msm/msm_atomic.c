@@ -24,6 +24,7 @@
 #include "msm_kms.h"
 #include "msm_gem.h"
 #include "msm_fence.h"
+#include "sde_hw_mdss.h"
 
 #define MULTIPLE_CONN_DETECTED(x) (x > 1)
 
@@ -609,6 +610,13 @@ static void complete_commit(struct msm_commit *c)
 
 	kms->funcs->complete_commit(kms, state);
 
+	// Ensure dim layer frame is committed
+	if (unlikely(sde_hw_dim_active) && hbm_active) {
+		hbm_level = 1;
+		mb();
+		queue_work(system_highpri_wq, &hbm_work);
+	}
+
 	priv->commit_end_time =  ktime_get(); //commit end time
 
 	end_atomic(priv, c->crtc_mask, c->plane_mask);
@@ -763,6 +771,10 @@ retry:
 		goto error;
 
 	BUG_ON(drm_atomic_helper_swap_state(state, false) < 0);
+
+	if (!atomic_cmpxchg_acquire(&priv->pm_req_set, 1, 0))
+		pm_qos_update_request(&priv->pm_irq_req, 100);
+	mod_delayed_work(system_unbound_wq, &priv->pm_unreq_dwork, HZ / 10);
 
 #ifdef CONFIG_DRM_MSM_MDP5
 	/*

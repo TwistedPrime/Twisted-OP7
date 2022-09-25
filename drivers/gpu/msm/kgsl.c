@@ -5155,7 +5155,8 @@ static long kgsl_run_one_worker(struct kthread_worker *worker,
 		struct task_struct **thread, const char *name)
 {
 	kthread_init_worker(worker);
-	*thread = kthread_run(kthread_worker_fn, worker, name);
+	*thread = kthread_run_perf_critical(cpu_hp_mask,
+			kthread_worker_fn, worker, name);
 	if (IS_ERR(*thread)) {
 		pr_err("unable to start %s\n", name);
 		return PTR_ERR(thread);
@@ -5248,7 +5249,7 @@ static int __init kgsl_core_init(void)
 		WQ_HIGHPRI | WQ_UNBOUND | WQ_MEM_RECLAIM | WQ_SYSFS, 0);
 
 	kgsl_driver.mem_workqueue = alloc_workqueue("kgsl-mementry",
-		WQ_HIGHPRI | WQ_UNBOUND | WQ_MEM_RECLAIM | WQ_FREEZABLE, 0);
+		WQ_UNBOUND | WQ_MEM_RECLAIM, 0);
 
 	if (IS_ERR_VALUE(kgsl_run_one_worker_perf(&kgsl_driver.worker,
 			&kgsl_driver.worker_thread,
@@ -5258,8 +5259,8 @@ static int __init kgsl_core_init(void)
 			"kgsl_low_prio_worker_thread")))
 		goto err;
 
+	sched_setscheduler(kgsl_driver.worker_thread, SCHED_FIFO, &param);
 	/* kgsl_driver.low_prio_worker_thread should not be SCHED_FIFO */
-	sched_setscheduler(kgsl_driver.worker_thread, SCHED_RR, &param);
 
 	kgsl_events_init();
 
