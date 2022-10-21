@@ -546,10 +546,6 @@ int sde_connector_update_backlight(struct drm_connector *connector)
 extern int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
 				enum dsi_cmd_set_type type);
 
-extern int __dsi_panel_tx_cmd_set(struct dsi_panel *panel,
-				enum dsi_cmd_set_type type,
-				bool fod_usage);
-
 static int _sde_connector_update_hbm(struct sde_connector *c_conn)
 {
 	struct drm_connector *connector = &c_conn->base;
@@ -613,8 +609,8 @@ static int _sde_connector_update_hbm(struct sde_connector *c_conn)
 		//struct drm_encoder *drm_enc = c_conn->encoder;
 		dsi_display->panel->is_hbm_enabled = fingerprint_mode;
 		if (fingerprint_mode) {
-			HBM_flag=true;
 			mutex_lock(&dsi_display->panel->panel_lock);
+			HBM_flag=true;
 			if (dsi_display->panel->aod_status==1 && !finger_type) {
 				if (dsi_display->panel->aod_mode == 2) {
 					dsi_panel_tx_cmd_set(dsi_display->panel, DSI_CMD_AOD_OFF_HBM_ON_SETTING);
@@ -631,7 +627,8 @@ static int _sde_connector_update_hbm(struct sde_connector *c_conn)
 			}
 			else {
 				//sde_encoder_poll_line_counts(drm_enc);
-				__dsi_panel_tx_cmd_set(dsi_display->panel, DSI_CMD_SET_HBM_ON_5, true);
+				dsi_panel_tx_cmd_set(dsi_display->panel, DSI_CMD_LOADING_EFFECT_ON);
+				dsi_panel_tx_cmd_set(dsi_display->panel, DSI_CMD_SET_HBM_ON_5);
 				pr_debug("Send DSI_CMD_SET_HBM_ON_5 cmds\n");
 			}
 			mutex_unlock(&dsi_display->panel->panel_lock);
@@ -643,6 +640,7 @@ static int _sde_connector_update_hbm(struct sde_connector *c_conn)
 			if (dsi_display->panel->aod_status == 1 && !finger_type) {
 				if(oneplus_dim_status == 5){
 					dsi_panel_tx_cmd_set(dsi_display->panel, DSI_CMD_SET_HBM_OFF);
+					dsi_panel_tx_cmd_set(dsi_display->panel, DSI_CMD_LOADING_EFFECT_OFF);
 					pr_debug("Send DSI_CMD_SET_HBM_OFF cmds\n");
 					aod_fod_flag = true;
 					dsi_display->panel->aod_status = 0;
@@ -679,7 +677,8 @@ static int _sde_connector_update_hbm(struct sde_connector *c_conn)
 			else {
 				HBM_flag = false;
 				//sde_encoder_poll_line_counts(drm_enc);
-				rc = dsi_panel_tx_cmd_set(dsi_display->panel, DSI_CMD_SET_HBM_OFF);
+				dsi_panel_tx_cmd_set(dsi_display->panel, DSI_CMD_SET_HBM_OFF);
+				dsi_panel_tx_cmd_set(dsi_display->panel, DSI_CMD_LOADING_EFFECT_OFF);
 				pr_debug("Send DSI_CMD_SET_HBM_OFF cmds\n");
 			}
 			mutex_unlock(&dsi_display->panel->panel_lock);
